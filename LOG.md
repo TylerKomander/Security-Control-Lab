@@ -107,3 +107,26 @@ of this lab. The shell opens the file and tshark only sees a stream:
 
 **Proof:** The read prints the full exchange: `AS-REQ`, `KRB5KDC_ERR_PREAUTH_REQUIRED`, `AS-REQ`,
 `AS-REP`, then two `TGS-REQ`/`TGS-REP` pairs.
+
+## 2026-09-28 — The first firewall capture was mostly SSH noise
+
+**Symptom:** Capture 02 was meant to hold two short nmap scans from Kali, around 30 packets. It came
+back with 372.
+
+**Tried:**
+- Broke the file down by protocol and port with tshark on Windows. 319 packets were SSH between
+  Ubuntu port 22 and Kali port 44292. The scan itself was only about 20 packets buried in there.
+- Kali port 44292 was the `ssh -K alice@testserver1.lab.example` session I had opened to check
+  that Kerberos still worked after turning on default deny. I never closed it.
+
+**Root cause:** The capture filter was `host 192.168.40.129`, which matches everything Kali sends,
+not just the test. Any session left open from Kali ends up in the evidence.
+
+**Fix:** Closed the SSH session and ran the capture and both scans again. I recaptured instead of
+filtering the old file so the published capture is exactly what tshark wrote.
+
+**Proof:** The new capture has 34 packets. TCP 464, 749 and 750 each get a SYN and a retry with no
+reply. 22 and 88 answer with SYN-ACK. UDP 88 and 123 return real Kerberos and NTP replies, and UDP
+464 and 750 get nothing back. The three ICMP packets come from Kali, not Ubuntu: nmap sends from a
+raw socket, so Kali's kernel answers the replies with port unreachable. `iptables-save` shows
+`:INPUT DROP [20:752]`, which is the 10 blocked probes per run across both runs.
